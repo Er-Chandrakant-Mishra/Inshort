@@ -2,6 +2,7 @@
 
 buildscript {
     ext {
+        kotlin_version = '1.9.0'
         buildToolsVersion = "33.0.0"
         minSdkVersion = 21
         compileSdkVersion = 33
@@ -13,9 +14,16 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        //   mavenLocal()
+        jcenter()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
+        // classpath("com.android.tools.build:gradle")
+        classpath 'com.android.tools.build:gradle:4.2.0'
         classpath("com.facebook.react:react-native-gradle-plugin")
+        // classpath 'com.google.gms:google-services:4.3.10'
+        classpath 'com.google.gms:google-services:4.3.14'  // Update to the latest version
+        //  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin: 1.9.0"
+
     }
 }

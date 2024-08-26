@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "com.facebook.react"
 
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -73,9 +74,9 @@ android {
 
     compileSdkVersion rootProject.ext.compileSdkVersion
 
-    namespace "com.inshortapp"
+    namespace "com.mc.eenadupratibha"
     defaultConfig {
-        applicationId "com.inshortapp"
+        applicationId "com.mc.eenadupratibha"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -105,7 +106,10 @@ android {
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
-    implementation("com.facebook.react:react-android")
+    // implementation("com.facebook.react:react-android")
+    implementation "com.facebook.react:react-native:0.58.3"
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-analytics")
 
     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}")
     debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {
@@ -120,5 +124,16 @@ dependencies {
     }
 }
 
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'mapDebugSourceSetPaths') {
+        task.dependsOn 'processDebugGoogleServices'
+    }
+}
+
 apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
+// apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+
+// Apply the Google Services plugin
+apply plugin: 'com.google.gms.google-services'

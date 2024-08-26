@@ -3,12 +3,12 @@ import React from 'react';
 import WebView from 'react-native-webview';
 
 const NewsDetails = ({ route }) => {
-  const { item } = route.params;
+  const { uri } = route.params;
   return (
     <>
 
       <WebView
-        source={{ uri: item.dynamic_url}}
+        source={{ uri: uri}}
       />
 
     </>

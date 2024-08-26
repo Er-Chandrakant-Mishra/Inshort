@@ -1,4 +1,4 @@
-package com.inshortapp;
+package com.mc.eenadupratibha;
 
 import android.app.Application;
 import com.facebook.react.PackageList;

@@ -1,314 +1,591 @@
-
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Modal, TouchableWithoutFeedback, Image, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
+import React, {useState, useEffect, useRef, useCallback, useMemo} from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  Dimensions,
+  PanResponder,
+  ActivityIndicator,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  Animated,
+} from 'react-native';
 import Header from '../Header/Header';
 import Footer from '../Footer/Footer';
-import WebView from 'react-native-webview';
+import Iconss from 'react-native-vector-icons/MaterialIcons';
+import getFcmToken from '../getFcmToken/getFcmToken';
+import PushNotification from '../push_notification/push_notification';
+import {useFocusEffect, useTheme} from '@react-navigation/native';
+import More_model from '../more_model/More_model';
+import { useSelector } from 'react-redux';
+import { DARK_BG_COLOR, LIGHT_BG_COLOR ,LIGHT_TEXT_COLOR,DARK_TEXT_COLOR} from '../redux/utils/Colors';
 
 
-const ListOfData = ({ navigation }) => {
+
+
+const ListOfData = ({navigation}) => {
+  // State management using hooks
   const [showHeaderFooter, setShowHeaderFooter] = useState(false);
-  const [showLanguageButtons, setShowLanguageButtons] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('hindi');
+  const [selectedLanguage, setSelectedLanguage] = useState('telugu');
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDescriptionScrollable, setIsDescriptionScrollable] = useState(false);
-  const [contentHeight, setContentHeight] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [readMoreClick, setReadMoreClick] = useState(false);
+  const [page, setPage] = useState(0); // Add page state
+  const [isFetchingMore, setIsFetchingMore] = useState(false); // State to check if more data is being fetched
+  const [valueOfMoreModelOfFooter, setValueOfMoreModelOfFooter] =
+    useState(true);
+  const [isMoreModalVisible, setIsMoreModalVisible] = useState(false); // New state for modal visibility
+  // const { theme } = useTheme();
+  // const isDarkMode = theme === 'dark';
 
+  const THEME = useSelector(state => state.theme);
+  const LANGUAGE = useSelector(state => state.language)
 
-  const languages = [
-    { label: 'Hindi', code: 'hindi', url: 'https://prod.api.etvbharat.com/catalog_lists/5b4f67462db2261f4d000a36?auth_token=J5YzsHgs74NjsqwjdUyY&response=r2&item_languages=hi&portal_state=dl&pagination_url=/hindi/delhi/bharat&page=0&page_size=43&client=dailyhunt' },
-    { label: 'Marathi', code: 'marathi', url: 'https://prod.api.etvbharat.com/catalog_lists/5b4fff182db2266b78000a36?auth_token=J5YzsHgs74NjsqwjdUyY&response=r2&item_languages=mr&portal_state=mh&pagination_url=/marathi/maharashtra/bharat&page=0&page_size=43&client=dailyhunt' },
-    { label: 'Bangla', code: 'bangla', url: 'https://prod.api.etvbharat.com/catalog_lists/5b4f80d52db2262cef000a36?auth_token=J5YzsHgs74NjsqwjdUyY&response=r2&item_languages=bn&portal_state=wb&pagination_url=/bengali/west-bengal/bharat&page=0&page_size=43&client=dailyhunt' }
-  ];
+  console.log('LANGUAGE:-',LANGUAGE)
 
+  const swipeAnimation = useRef(new Animated.Value(0)).current;
+  const nextSwipeAnimation = useRef(
+    new Animated.Value(Dimensions.get('window').height),
+  ).current;
+  const prevSwipeAnimation = useRef(
+    new Animated.Value(-Dimensions.get('window').height),
+  ).current;
 
+  // Ref for managing timeout
+  const timeoutRef = useRef(null);
 
+  const languages = useMemo(
+    () => [
+      {
+        label: 'Telugu',
+        code: 'telugu',
+        url: 'http://172.17.15.218/hello/Welcome/get_noti_lang_wise_data?lang_id=2',
+      },
+      {
+        label: 'Letest_news',
+        code: 'letest_news',
+        url: 'http://172.17.15.218/hello/Welcome/get_current_affairs_lang_wise?lang_id=2',
+      },
+      {
+        label: 'English',
+        code: 'english',
+        url: 'http://172.17.15.218/hello/Welcome/get_noti_lang_wise_data?lang_id=1',
+      },
+    ],
+    [page],
+  );
 
+  useEffect(() => {
+    PushNotification();
 
-  const handleContentClick = () => {
-    setShowHeaderFooter(!showHeaderFooter);
-    if (showHeaderFooter == true) {
-      setShowLanguageButtons(false);
-      handleCloseMenu();
+    // console.log('token:-',token)
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(
+          languages.find(lang => lang.code === selectedLanguage).url,
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const jsondata = await response.json();
+        if (jsondata && jsondata.data) {
+          setItems(jsondata.data);
+          setCurrentIndex(0);
+        } else {
+          console.log('Invalid data structure:', jsondata);
+        }
+      } catch (error) {
+        console.log('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+        setIsFetchingMore(false);
+      }
+    };
 
+    fetchData();
+  }, [selectedLanguage, languages, page]);
+
+  // Handle language change
+  const handleLanguageChange = useCallback(languageCode => {
+    setSelectedLanguage(languageCode);
+  }, []);
+
+  const handleModalVisible = useCallback(modalVisible => {
+    setIsMoreModalVisible(modalVisible); // Update visibility state
+  }, []);
+
+  // Swipe up handling with infinite scroll
+  const onSwipeUp = useCallback(() => {
+    if (!isAnimating) {
+      setIsAnimating(true);
+
+      const nextIndex = currentIndex + 1;
+      const resetIndex = nextIndex >= items.length ? 0 : nextIndex;
+
+      Animated.parallel([
+        Animated.timing(swipeAnimation, {
+          toValue: -Dimensions.get('window').height,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(nextSwipeAnimation, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setCurrentIndex(resetIndex);
+        swipeAnimation.setValue(0);
+        nextSwipeAnimation.setValue(Dimensions.get('window').height);
+        setIsAnimating(false);
+      });
+    }
+  }, [
+    currentIndex,
+    isAnimating,
+    items.length,
+    swipeAnimation,
+    nextSwipeAnimation,
+  ]);
+
+  // Swipe down handling with infinite scroll
+  const onSwipeDown = useCallback(() => {
+    if (!isAnimating) {
+      setIsAnimating(true);
+
+      const prevIndex = currentIndex - 1;
+      const resetIndex = prevIndex < 0 ? items.length - 1 : prevIndex;
+
+      Animated.parallel([
+        Animated.timing(swipeAnimation, {
+          toValue: Dimensions.get('window').height,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(prevSwipeAnimation, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setCurrentIndex(resetIndex);
+        swipeAnimation.setValue(0);
+        prevSwipeAnimation.setValue(-Dimensions.get('window').height);
+        setIsAnimating(false);
+      });
+    }
+  }, [
+    currentIndex,
+    isAnimating,
+    items.length,
+    swipeAnimation,
+    prevSwipeAnimation,
+  ]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderMove: (e, gestureState) => {
+          const {dy} = gestureState;
+          if (dy < -50 && !isAnimating) {
+            onSwipeUp();
+          } else if (dy > 50 && !isAnimating) {
+            onSwipeDown();
+          }
+        },
+        onPanResponderRelease: (e, gestureState) => {
+          const {dx, dy} = gestureState;
+          if (dx === 0 && dy === 0) {
+            handleContentPress();
+          }
+        },
+        onPanResponderGrant: (e, gestureState) => {
+          // Optional: can be used for initial touch logic if needed
+        },
+      }),
+    [isAnimating, onSwipeDown, onSwipeUp],
+  );
+
+  // Animated style for swipe animation
+  const animatedStyle = useMemo(
+    () => ({
+      transform: [{translateY: swipeAnimation}],
+    }),
+    [swipeAnimation],
+  );
+
+  const handleContentPress = useCallback(() => {
+    // console.log('Content pressed');
+    setShowHeaderFooter(prev => !prev);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      setShowHeaderFooter(false);
+    }, 3000);
+    return () => clearTimeout(timeoutRef.current);
+  }, [showHeaderFooter]);
+
+  const handleReadMorePress = useCallback(() => {
+    // setReadMoreClick(!readMoreClick);
+    console.log('readmore button clicked');
+    navigation.navigate('NewsDetails', {
+      uri: items[currentIndex]?.dynamic_url,
+    });
+  }, [currentIndex, items, navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Reset the readMoreClick state when the screen is focused
+      setReadMoreClick(false);
+    }, []),
+  );
+
+  const image_url = 'https://pratibha.eenadu.net/images/thumbicon1.png';
+
+  const stripHtmlTags = str => {
+    try {
+      if (typeof str !== 'string') {
+        return '';
+      }
+      return str.replace(/<[^>]*>?/gm, '');
+    } catch (error) {
+      console.log('error in stripHtmlTags :-', error);
     }
   };
 
-
-
-  const toggleLanguageButtons = (visible) => {
-    setShowLanguageButtons(visible);
-  };
-
-  useEffect(() => {
-    setIsLoading(true);
-    fetch(languages.find(lang => lang.code === selectedLanguage).url)
-      .then((response) => response.json())
-      .then((jsondata) => {
-        if (jsondata && jsondata.data && jsondata.data.catalog_list_items) {
-          setItems(jsondata.data.catalog_list_items);
-        } else {
-          console.error('Invalid data structure:', jsondata);
-        }
-      })
-      .catch((error) => {
-        console.error('Error fetching data:', error);
-      })
-      .finally(() => {
-        setIsLoading(false); // Stop loading indicator
-      });
-
-  }, [selectedLanguage]);
-
-  const handleLanguageChange = (languageCode) => {
-    setSelectedLanguage(languageCode);
-    setShowLanguageButtons(false);
-  };
-
-
-  const handleCloseMenu = () => {
-    setShowLanguageButtons(false)
-  };
-
-
-  const renderItem = ({ item }) => {
-
-
-    const imageUrl = item.thumbnails.small_16_9.url;
-    const video_tag = item.ad_conf_video.video_tag;
-    const carousel_tag = item.ad_conf_video.carousel_tag;
-
-
-    return (
-      <View style={styles.fullScreenContainer}>
-        <View style={styles.fullScreenItem} >
-          <Image
-            source={{ uri: imageUrl }}
-            style={[styles.thumbnail, { height: 250 }]}
-            onError={(error) => {
-              console.log("Error loading image:", imageUrl, error.nativeEvent.error);
-            }}
-          />
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>{item.title}</Text>
-            <View style={{ flexDirection: 'row', alignSelf: 'center' }}>
-              <Text style={styles.description} onPress={() => handleContentClick(item)}>{item.short_description}
-                  <Text style={{ color: 'blue', marginLeft: -100, position: 'relative', bottom: -160, left: -260, width: 100, height: 50 }} onPress={() => navigation.navigate("NewsDetails", { item })} >... read more</Text>
-                  </Text>
-            </View>
-          </View>
-          <TouchableWithoutFeedback onPress={() => handleContentClick(item)}>
-            <View style={{ width: "100%", height: 220, backgroundColor: 'rgba(255, 255, 255, 0.5)', position: 'relative', bottom: -119 }} />
-          </TouchableWithoutFeedback>
-        </View>
-      
-      </View>
-    );
-  };
-  const itemHeight = Dimensions.get('window').height - 20; // Adjusted item height
-  const snapInterval = -(itemHeight + 10); // Use negative value for sliding effect
-
+  const handleCancelModel = () => {
+    setIsMoreModalVisible(false)
+  }
 
   return (
-    <View style={styles.container}>
-      {
-        showLanguageButtons && (
-          <Modal transparent={true} visible={true} >
-
-
-            <TouchableWithoutFeedback onPress={() => setShowLanguageButtons(false)}>
-              <View style={styles.transparent} />
-            </TouchableWithoutFeedback>
-            <View style={styles.languageButtonsContainer}>
-              <View style={styles.languageButtons}>
-
-
-                <TouchableOpacity
-                  onPress={() => handleLanguageChange('hindi')}
-                >
-                  <Text style={[styles.languageButtonText]}>Hindi</Text>
-                </TouchableOpacity>
-                <View style={{ width: 400, height: 1, backgroundColor: 'gray' }} />
-
-                <TouchableOpacity
-                  onPress={() => handleLanguageChange('marathi')}
-                >
-                  <Text style={styles.languageButtonText}>Marathi</Text>
-                </TouchableOpacity>
-                <View style={{ width: 400, height: 1, backgroundColor: 'gray' }} />
-                <TouchableOpacity
-                  onPress={() => handleLanguageChange('bangla')}
-                >
-                  <Text style={styles.languageButtonText}>Bangala</Text>
-                </TouchableOpacity>
-
-              </View>
-            </View>
-
-          </Modal>
-        )
-      }
-
-
-      {/* Loading indicator */}
-      {isLoading && (
-        <ActivityIndicator
-          style={styles.loadingIndicator}
-          size="large"
-          color="red"
-        />
-      )}
-
-      {items && items.length > 0 && (
-        <FlatList
-          data={items}
-          keyExtractor={(item, index) => `${item.news_id}_${index}`}
-          renderItem={renderItem}
-          horizontal={false}
-          pagingEnabled
-          snapToAlignment="start"
-          snapToInterval={snapInterval}
-          decelerationRate="fast"
-          contentContainerStyle={styles.listContainer}
-        />
-      )}
-
-      {showHeaderFooter && (
-        <View style={styles.overlay}>
-          <Header showLanguageButtons={showLanguageButtons}
-            toggleLanguageButtons={toggleLanguageButtons}
-            selectedLanguage={selectedLanguage}
+    <TouchableWithoutFeedback onPress={handleContentPress}>
+      <View style={styles.container}>
+        {isLoading && page === 0 && (
+          <ActivityIndicator
+            style={styles.loadingIndicator}
+            size="large"
+            color="red"
           />
+        )}
+        {items && items.length > 0 && (
+          <View style={[styles.content,
+          // {backgroundColor:'red'}
+          ]}>
+            <View style={[styles.cardWrapper]}>
+              <Animated.View
+                style={[
+                  styles.cardContainer,
+                  animatedStyle,
+                  {
+                    zIndex: 1,
+                    position: readMoreClick ? 'relative' : 'absolute',
+                  },
+                  {backgroundColor:THEME.data == 'light' ? LIGHT_BG_COLOR:DARK_BG_COLOR}
+                ]}
+                {...panResponder.panHandlers}>
+                <TouchableWithoutFeedback onPress={handleContentPress}>
+                 
+                <View style={[styles.card, {backgroundColor:THEME.data == 'light' ? LIGHT_BG_COLOR:DARK_BG_COLOR}]}>
+                    <Image
+                      source={{
+                        uri: image_url,
+                      }}
+                      style={styles.image}
+                    />
+                    <View style={{top: '-12%'}}>
+                      <Text style={[styles.title ,{color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}]}>
+                        {selectedLanguage === 'letest_news'
+                          ? stripHtmlTags(items[currentIndex].art_title_telugu)
+                          : stripHtmlTags(
+                              items[currentIndex].lt_notif_title_telugu,
+                            )}
+                      </Text>
+                      <Text style={[styles.description , {color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}]}>
+                        {selectedLanguage === 'letest_news'
+                          ? items[currentIndex].art_short_desc_telugu
+                          : items[currentIndex].lt_notif_short_desc_html}
+                        {/* <TouchableOpacity onPress={handleReadMorePress}>
+                          <Text style={styles.readMore}>... read more</Text>
+                        </TouchableOpacity> */}
+                      </Text>
+                    </View>
+                    <View
+                      style={{flexDirection: 'row', bottom: '5%', left: '6%'}}>
+                      <Iconss name="access-time" size={25} color={THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR} />
+                      <Text style={{marginTop: '0.9%', marginLeft: '2%' , color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}}>
+                        {selectedLanguage === 'letest_news'
+                          ? items[currentIndex].art_created_date
+                          : items[currentIndex].lt_notif_date}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </Animated.View>
+              {currentIndex < items.length - 1 && (
+                <Animated.View
+                  style={[
+                    styles.cardContainer,
+                    {
+                      zIndex: 0,
+                      position: readMoreClick ? 'relative' : 'absolute',
+                      transform: [{translateY: nextSwipeAnimation}],
+                    },
+                    {backgroundColor:THEME.data == 'light' ? LIGHT_BG_COLOR:DARK_BG_COLOR}
+                  ]}>
+                  <TouchableWithoutFeedback>
+                    <View style={[styles.card,{backgroundColor:THEME.data == 'light' ? LIGHT_BG_COLOR:DARK_BG_COLOR}]}>
+                      <Image
+                        source={{
+                          uri: image_url,
+                        }}
+                        style={[styles.image, {marginTop: '1%'}]}
+                      />
+                      <View style={{top: '-12%'}}>
+                        <Text style={[styles.title,{color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}]}>
+                          {stripHtmlTags(
+                            items[currentIndex + 1]?.lt_notif_title_telugu,
+                          )}
+                        </Text>
+                        <Text style={[styles.description,{color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}]}>
+                          {items[currentIndex + 1]?.lt_notif_short_desc_html}
+                          {/* <TouchableOpacity
+                            onPress={handleReadMorePress}
+                            style={{width: 200, height: 200}}>
+                            <Text style={styles.readMore}>... read more</Text>
+                          </TouchableOpacity> */}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          bottom: '5%',
+                          left: '6%',
+                        }}>
+                        <Iconss name="access-time" size={25}  color={THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR} />
+                        <Text style={{marginTop: '0.9%', marginLeft: '2%', color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}}>
+                          {items[currentIndex + 1]?.lt_notif_date}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableWithoutFeedback>
+                </Animated.View>
+              )}
+              {currentIndex > 0 && (
+                <Animated.View
+                  style={[
+                    styles.cardContainer,
+                    {
+                      zIndex: 0,
+                      position: readMoreClick ? 'relative' : 'absolute',
+                      transform: [{translateY: prevSwipeAnimation}],
+                    },
+                    {backgroundColor:THEME.data == 'light' ? LIGHT_BG_COLOR:DARK_BG_COLOR}
+                  ]}>
+                  <TouchableWithoutFeedback>
+                    <View style={[styles.card, {backgroundColor:THEME.data == 'light' ? LIGHT_BG_COLOR:DARK_BG_COLOR}]}>
+                      <Image
+                        source={{
+                          uri: image_url,
+                        }}
+                        style={[styles.image, {marginTop: '1%'}]}
+                      />
+                      <View style={{top: '-12%'}}>
+                        <Text style={[styles.title,{color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}]}>
+                          {stripHtmlTags(
+                            items[currentIndex - 1]?.lt_notif_title_telugu,
+                          )}
+                        </Text>
+                        <Text style={[styles.description , {color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}]}>
+                          {items[currentIndex - 1]?.lt_notif_short_desc_html}
+                          {/* <TouchableOpacity
+                            onPress={handleReadMorePress}
+                            style={{width: 200, height: 200}}>
+                            <Text style={styles.readMore}>... read more</Text>
+                          </TouchableOpacity> */}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          bottom: '5%',
+                          left: '6%',
+                        }}>
+                        <Iconss name="access-time" size={25}  color={THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}/>
+                        <Text style={{marginLeft: '2%',color:THEME.data == 'light' ? LIGHT_TEXT_COLOR:DARK_TEXT_COLOR}}>
+                          {items[currentIndex - 1]?.lt_notif_date}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableWithoutFeedback>
+                </Animated.View>
+              )}
+            </View>
+          </View>
+        )}
+        {showHeaderFooter && (
+          <View style={styles.overlay}>
+            <Header
+              onSelectedLanguage={handleLanguageChange}
+              selectedLanguage={selectedLanguage}
+            />
+          </View>
+        )}
+        {showHeaderFooter && (
+          <View style={styles.overlayFooter}>
+            <Footer handleModalVisible={handleModalVisible} />
+          </View>
+        )}
+
+        <View style={styles.More_model}>
+          {isMoreModalVisible && <More_model onHandleCancelModel={handleCancelModel} />}
         </View>
-      )}
-      {showHeaderFooter && (
-        <View style={styles.overlayFooter}>
-          <Footer />
-        </View>
-      )}
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    // flex: 1,
+    position: 'relative',
+    backgroundColor: '#F8F8F8',
+    // backgroundColor: isDarkMode ? '#333' : '#FFF'
   },
-  fullScreenContainer: {
-    flex: 1,
-    width: Dimensions.get('window').width,
-    height: Dimensions.get('window').height,
-  },
-  fullScreenItem: {
-    flex: 1,
+  content: {
+    // flex: 1,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    // backgroundColor: 'red'
+  },
+  cardWrapper: {
+    // flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  cardContainer: {
+    // position: readMoreClick ? 'relative' : 'absolute',
+    // width: '100%',
+    height: Dimensions.get('window').height * 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    // margin:'15%'
+  },
+  card: {
+    width: '100%',
+    height: Dimensions.get('window').height * 0.8,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 10,
+    padding: 10,
+    // elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  image: {
+    width: Dimensions.get('window').width * 1.1,
+    height: Dimensions.get('window').height * 0.5,
+    borderRadius: 10,
+    top: '-15%',
+    left: '-3%',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginVertical: 10,
+    margin: 35,
+    width: 370,
+    // top: '-11%',
+    color: 'black',
+    // backgroundColor: 'red',
+  },
+  description: {
+    fontSize: 18,
+    color: '#333',
+    margin: '9%',
+    marginTop: 0,
+    //  marginLeft:'4%'
+    // top: '-3%',
+    // backgroundColor: 'red',
+  },
+  readMore: {
+    fontSize: 14,
+    color: '#007BFF',
+  },
+  loadingIndicator: {
+    // flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    bottom: -350,
   },
   languageButtonsContainer: {
     flex: 1,
-    alignItems: 'center', // Center align the buttons horizontally
-    position: 'absolute',
-    bottom: 0,
-    justifyContent: 'center',
-    alignContent: 'center',
-    alignSelf: 'center',
-    backgroundColor: 'white',
-    height: 100,
-    width: '100%'
-
-
-  },
-  languageButtons: {
-    flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    alignContent: 'center',
-    alignSelf: 'center',
+    marginTop: 22,
   },
-
+  languageButtons: {
+    width: '80%',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 35,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
   languageButtonText: {
-    color: 'black',
+    fontSize: 18,
     fontWeight: 'bold',
+    marginBottom: 10,
     textAlign: 'center',
-    fontSize: 12,
-    margin: 4,
-    padding: 5
+  },
+  separator: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#ddd',
+    marginVertical: 10,
   },
   transparent: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)'
-  },
-  itemContainer: {
-    flexDirection: 'column',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-    padding: 10,
-  },
-  titleContainer: {
-    padding: 5,
-    position: 'relative',
-    bottom: -90
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  description: {
-    fontSize: 16,
-    color: 'black',
-    bottom: -26
+    backgroundColor: 'transparent',
   },
   overlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    zIndex: 100,
   },
   overlayFooter: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    zIndex: 100,
   },
-  thumbnail: {
-    width: "100%", // Width of the image is 100% of the container
-    resizeMode: "cover", // Cover mode to fit and crop the image
+  More_model: {
     position: 'absolute',
-    top: 0
+    bottom: '25%',
+    // left: 0,
+    // right: 0,
+    // top: 0,
+    zIndex: 100,
   },
-  listContainer: {
-    flexGrow: 1, // Use flexGrow instead of flex for proper scrolling behavior
-  },
-  imageContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    aspectRatio: 16 / 9, // Maintain 16:9 aspect ratio for the container
-    width: "100%",
-    backgroundColor: "lightgray", // Blue background as you mentione
-  },
-  newsButton: {
-    backgroundColor: '#5c4f4e',
-    position: 'absolute',
-  },
-  loadingIndicator: {
-    position: 'absolute',
-    top: 300,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollableDescription: {
-    maxHeight: 150,
-    fontSize: 12,
-  },
-
-
 });
 
 export default ListOfData;

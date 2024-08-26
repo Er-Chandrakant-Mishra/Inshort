@@ -1,4 +1,4 @@
-package com.inshortapp;
+package com.mc.eenadupratibha;
 
 import com.facebook.react.ReactActivity;
 import com.facebook.react.ReactActivityDelegate;

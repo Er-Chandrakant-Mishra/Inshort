@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "430167185622",
+    "project_id": "inshortandroid",
+    "storage_bucket": "inshortandroid.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:430167185622:android:2266873715ebb5a9fa5177",
+        "android_client_info": {
+          "package_name": "com.mc.eenadupratibha"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcZflgwq4JcSrGMXk7RojJdJatQ5IjLto"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
